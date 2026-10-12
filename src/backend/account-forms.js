@@ -3,7 +3,7 @@
 // separate form and approval per user). Each copy gets its own approval; the
 // ticket moves on only once every account form has been decided.
 import { kvs } from '@forge/kvs';
-import { attachExternalFormToIssue, getSimplifiedFormAnswers, listIssueForms } from './forms.js';
+import { attachExternalFormToIssue, getFormAnswers, listIssueForms } from './forms.js';
 import { addPublicComment, clean, groupOutcome, nowIso, queryPrefix, transitionIssue } from './store.js';
 
 export const MAX_ACCOUNT_FORMS = 25;
@@ -22,7 +22,7 @@ export async function listAccountForms(issueKey, formId) {
 export function accountLabel(answers, fieldKey) {
   const key = clean(fieldKey, 300);
   if (!key) return '';
-  return clean((answers || []).find((row) => clean(row.fieldKey, 300) === key)?.answer, 200);
+  return clean((answers || []).find((row) => clean(row.fieldKey, 300) === key || clean(row.questionKey, 300) === key)?.answer, 200);
 }
 
 // Attaches one more customer-visible copy of the form and, for auto-send rules,
@@ -68,7 +68,7 @@ export async function accountFormStatus(issueKey, suggestion) {
     const approval = records.filter((r) => clean(r.formSnapshot?.instanceId, 300) === instanceId).at(-1);
     let label = clean(approval?.formAccountLabel, 200);
     if (!label && isSubmitted(form)) {
-      try { label = accountLabel(await getSimplifiedFormAnswers(issueKey, instanceId), suggestion.formAccountFieldKey); }
+      try { label = accountLabel(await getFormAnswers(issueKey, instanceId), suggestion.formAccountFieldKey); }
       catch (error) { console.warn('Smart Approval: unable to read account form answers', error?.message || error); }
     }
     rows.push({ instanceId, number: index + 1, label, submitted: isSubmitted(form), state: copyState(form, records) });

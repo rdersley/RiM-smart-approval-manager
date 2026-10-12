@@ -169,8 +169,35 @@ test('each decision is written back onto its own form copy', async () => {
   await requestFor(f1.id);
   const [a2] = await requestFor(f2.id);
   await decide(a2, 'approved');
-  assert.deepEqual(copies()[1].writtenBack, { decision: { text: 'Approved' } });
+  // The customer's answers are kept; only the mapped question is added.
+  assert.deepEqual(copies()[1].writtenBack, { username: { text: 'B' }, reason: { text: 'Password not working' }, decision: { text: 'Approved' } });
   assert.equal(copies()[0].writtenBack, undefined);
+});
+
+test('a date question gets the decision date as a date, not text', async () => {
+  jira = createFakeJira({
+    issues: { 'SD-1': { projectId: PROJECT, status: 'Open', category: 'new', customers: ['cust', 'colleague'] } },
+    transitions: { 'SD-1': [{ id: '31', to: 'Approved' }] },
+    questionTypes: { approvedOn: 'da' },
+  });
+  useRule({ decisionFieldKey: '', approvedAtFieldKey: 'approvedOn' });
+  await sendForm();
+  const [f1] = copies();
+  submit(f1.id, 'A');
+  const [a1] = await requestFor(f1.id);
+  await decide(a1, 'approved');
+  assert.match(copies()[0].writtenBack.approvedOn.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(copies()[0].writtenBack.approvedOn.text, undefined);
+});
+
+test('the approver sees only the selected questions, matched by question number', async () => {
+  useRule({ formFieldKeys: ['username'] });
+  await sendForm();
+  const [f1] = copies();
+  submit(f1.id, 'FCOpacker1@ryr.com');
+  const [a1] = await requestFor(f1.id);
+  assert.deepEqual(a1.formSnapshot.answers, [{ fieldKey: 'username', label: 'Label username', answer: 'FCOpacker1@ryr.com' }]);
+  assert.equal(a1.formAccountLabel, 'FCOpacker1@ryr.com');
 });
 
 test('with auto-send, each copy sends its own approval when the customer submits it', async () => {
@@ -252,4 +279,16 @@ test('a request participant can add an account form; someone not on the request 
   await call(portal, 'addAccountForm', 'colleague', { issueKey: 'SD-1' });
   assert.equal(copies().length, 2);
   await assert.rejects(call(portal, 'getAccountForms', 'stranger', { issueKey: 'SD-1' }), /Request not found/);
+});
+
+test('choice answers are shown by their labels', async () => {
+  const { formAnswerRows } = await import('../src/backend/forms.js');
+  const rows = formAnswerRows({
+    design: { questions: { 1: { label: 'Database', questionKey: 'environment', type: 'cm', choices: [{ id: '1', label: 'Production' }, { id: '2', label: 'UAT' }] }, 3: { label: 'Username', questionKey: 'username', type: 'ts' } } },
+    state: { answers: { 1: { choices: ['1', '2'] }, 3: { text: 'TESTPACK1' } } },
+  });
+  assert.deepEqual(rows, [
+    { fieldKey: '1', questionKey: 'environment', label: 'Database', answer: 'Production, UAT' },
+    { fieldKey: '3', questionKey: 'username', label: 'Username', answer: 'TESTPACK1' },
+  ]);
 });
