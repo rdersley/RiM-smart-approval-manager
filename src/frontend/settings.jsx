@@ -329,7 +329,8 @@ const Settings = () => {
                 placeholder="Choose a form from this service project"
                 onChange={(v) => {
                   const formId = v?.value || '';
-                  updateRule(ruleIndex, { formId, formFieldKeys: [] });
+                  // Question keys belong to one form, so a new form clears every mapping to the old form's questions.
+                  updateRule(ruleIndex, { formId, formFieldKeys: [], formAccountFieldKey: '', approvedByFieldKey: '', approvedAtFieldKey: '', decisionFieldKey: '', decisionCommentFieldKey: '' });
                   loadFormFields(formId);
                 }}
               />
@@ -360,7 +361,7 @@ const Settings = () => {
                   <Label labelFor={`account-field-${ruleIndex}`}>Question that identifies the account</Label>
                   <Select
                     inputId={`account-field-${ruleIndex}`}
-                    options={(formFields[rule.formId] || []).map((field) => ({ label: field.label, value: field.key }))}
+                    options={[{ label: 'No account question', value: '' }, ...(formFields[rule.formId] || []).map((field) => ({ label: field.label, value: field.key }))]}
                     value={rule.formAccountFieldKey ? { label: (formFields[rule.formId] || []).find((field) => field.key === rule.formAccountFieldKey)?.label || rule.formAccountFieldKey, value: rule.formAccountFieldKey } : null}
                     placeholder="e.g. Vector / vPack username"
                     onChange={(v) => updateRule(ruleIndex, { formAccountFieldKey: v?.value || '' })}
@@ -380,7 +381,7 @@ const Settings = () => {
                   <Label labelFor={`${property}-${ruleIndex}`}>{label}</Label>
                   <Select
                     inputId={`${property}-${ruleIndex}`}
-                    options={(formFields[rule.formId] || []).map((field) => ({ label: field.label, value: field.key }))}
+                    options={[{ label: 'Do not write this value to the form', value: '' }, ...(formFields[rule.formId] || []).map((field) => ({ label: field.label, value: field.key }))]}
                     value={rule[property] ? { label: (formFields[rule.formId] || []).find((field) => field.key === rule[property])?.label || rule[property], value: rule[property] } : null}
                     placeholder="Do not write this value to the form"
                     onChange={(v) => updateRule(ruleIndex, { [property]: v?.value || '' })}
