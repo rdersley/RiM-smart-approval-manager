@@ -94,14 +94,33 @@ resolver.define('decideApproval', async ({ payload, context }) => {
 
 // --- One form per account: customer side ---------------------------------
 // Customers cannot add forms to a request in JSM themselves, so the request
-// page offers "Add a form for another account". Only for someone who can see
-// the request (checked as that customer), only while an account-form rule
-// still matches, only after an agent sent the first form, and up to a cap.
+// page offers "Add a form for another account". Only for the request's
+// reporter or a participant, only while an account-form rule still matches,
+// only after an agent sent the first form, and up to a cap.
+//
+// Everything here runs as the app. Calling Jira as the customer would make
+// Forge ask every customer to "Allow access", which portal-only customers
+// (no Atlassian account) cannot do, hiding the app from them entirely.
+async function isReporterOrParticipant(key, accountId) {
+  const request = await api.asApp().requestJira(route`/rest/servicedeskapi/request/${key}`, { headers: { Accept: 'application/json' } });
+  if (!request.ok) return false;
+  if ((await request.json())?.reporter?.accountId === accountId) return true;
+  let start = 0;
+  for (let page = 0; page < 20; page += 1) {
+    const response = await api.asApp().requestJira(route`/rest/servicedeskapi/request/${key}/participant?start=${start}&limit=50`, { headers: { Accept: 'application/json' } });
+    if (!response.ok) return false;
+    const body = await response.json();
+    if ((body?.values || []).some((p) => p?.accountId === accountId)) return true;
+    if (body?.isLastPage !== false) return false;
+    start += 50;
+  }
+  return false;
+}
+
 async function accountFormContext(issueKey, accountId) {
   if (!accountId) throw new Error('You must be signed in.');
   const key = clean(issueKey, 100);
-  const visible = await api.asUser().requestJira(route`/rest/servicedeskapi/request/${key}`, { headers: { Accept: 'application/json' } });
-  if (!visible.ok) throw new Error('Request not found.');
+  if (!await isReporterOrParticipant(key, accountId)) throw new Error('Request not found.');
   // This panel loads on every portal request page, so stop cheaply on closed
   // tickets and on projects with no account-form rule.
   const issue = await json(await api.asApp().requestJira(route`/rest/api/3/issue/${key}?fields=project,status`));

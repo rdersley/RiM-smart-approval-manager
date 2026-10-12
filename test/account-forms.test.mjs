@@ -10,13 +10,14 @@ import { createFakeJira, createFakeKvs, route } from './helpers/fakes.mjs';
 const PROJECT = '10000';
 let jira;
 let caller = '';
+const userCalls = [];
 const store = createFakeKvs();
 const { default: Resolver } = createRequire(import.meta.url)('@forge/resolver');
 mock.module('@forge/resolver', { defaultExport: Resolver });
 mock.module('@forge/api', {
   defaultExport: {
     asApp: () => ({ requestJira: (path, options) => jira.requestJira(path, options) }),
-    asUser: () => ({ requestJira: (path, options) => jira.requestJira(path, options, caller) }),
+    asUser: () => ({ requestJira: (path, options) => { userCalls.push(String(path)); return jira.requestJira(path, options, caller); } }),
   },
   namedExports: { route },
 });
@@ -55,10 +56,11 @@ function useRule(overrides = {}) {
 }
 
 beforeEach(() => {
+  userCalls.length = 0;
   store.data.clear();
   caller = '';
   jira = createFakeJira({
-    issues: { 'SD-1': { projectId: PROJECT, status: 'Open', category: 'new', customers: ['cust'] } },
+    issues: { 'SD-1': { projectId: PROJECT, status: 'Open', category: 'new', customers: ['cust', 'colleague'] } },
     transitions: { 'SD-1': [{ id: '31', to: 'Approved' }, { id: '41', to: 'Declined' }] },
   });
   useRule();
@@ -223,4 +225,31 @@ test('rules without one form per account still use a single form and a single ap
     /No new active approvers/,
     'an approver with a pending approval on the ticket is not asked twice',
   );
+});
+
+test('customer-facing portal functions never call Jira as the customer', async () => {
+  // Acting as the customer makes Forge ask them to "Allow access", which
+  // portal-only customers (no Atlassian account) cannot do.
+  await sendForm();
+  await call(portal, 'getAccountForms', 'cust', { issueKey: 'SD-1' });
+  await call(portal, 'addAccountForm', 'cust', { issueKey: 'SD-1' });
+  const [f1] = copies();
+  submit(f1.id, 'FCOpacker1@ryr.com');
+  userCalls.length = 0;
+  await call(portal, 'getMyApprovals', 'cust', {});
+  await call(portal, 'getAccountForms', 'colleague', { issueKey: 'SD-1' });
+  await call(portal, 'addAccountForm', 'colleague', { issueKey: 'SD-1' });
+  assert.deepEqual(userCalls, [], 'customer-side calls');
+  const [a1] = await requestFor(f1.id); // agent action: may act as the agent
+  userCalls.length = 0;
+  await call(portal, 'getMyApprovals', 'mgr', { status: 'pending' });
+  await decide(a1, 'approved');
+  assert.deepEqual(userCalls, [], 'approver-side calls');
+});
+
+test('a request participant can add an account form; someone not on the request cannot', async () => {
+  await sendForm();
+  await call(portal, 'addAccountForm', 'colleague', { issueKey: 'SD-1' });
+  assert.equal(copies().length, 2);
+  await assert.rejects(call(portal, 'getAccountForms', 'stranger', { issueKey: 'SD-1' }), /Request not found/);
 });

@@ -48,6 +48,7 @@ export function createFakeJira({ issues = {}, users = {}, transitions = {}, form
   const calls = [];
   const properties = {};
   let formSeq = 0;
+  const asUserCalls = [];
 
   async function requestJira(path, options = {}, caller = '') {
     const method = (options.method || 'GET').toUpperCase();
@@ -87,16 +88,25 @@ export function createFakeJira({ issues = {}, users = {}, transitions = {}, form
       comments.push({ issueKey: decodeURIComponent(m[1]), body: body.body, public: body.public });
       return response(201, {});
     }
-    if (/^\/rest\/servicedeskapi\/request\/[^/]+\/participant$/.test(url.pathname)) return response(200, {});
+    // issue.customers is [reporter, ...participants].
+    if ((m = /^\/rest\/servicedeskapi\/request\/([^/]+)\/participant$/.exec(url.pathname))) {
+      if (method !== 'GET') return response(200, {});
+      const issue = issues[decodeURIComponent(m[1])];
+      if (!issue) return response(404, {});
+      return response(200, { values: (issue.customers || []).slice(1).map((accountId) => ({ accountId })), isLastPage: true });
+    }
     if ((m = /^\/rest\/api\/3\/issue\/([^/]+)\/properties\/([^/]+)$/.exec(url.pathname)) && method === 'PUT') {
       properties[`${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}`] = body;
       return response(200, {});
     }
-    // Portal visibility check, made as the signed-in customer (`caller`).
+    // A request as the app. Any call made as a customer (`caller` set) is
+    // recorded: portal code must never act as the customer (Forge would ask
+    // portal-only customers for consent they cannot give).
     if ((m = /^\/rest\/servicedeskapi\/request\/([^/]+)$/.exec(url.pathname)) && method === 'GET') {
+      if (caller) asUserCalls.push(url.pathname);
       const issue = issues[decodeURIComponent(m[1])];
-      const visible = issue && (!caller || (issue.customers || []).includes(caller));
-      return visible ? response(200, { issueKey: decodeURIComponent(m[1]) }) : response(404, { errorMessage: 'Not found' });
+      if (!issue) return response(404, { errorMessage: 'Not found' });
+      return response(200, { issueKey: decodeURIComponent(m[1]), reporter: { accountId: (issue.customers || [])[0] } });
     }
 
     // JSM Forms. forms[issueKey] is a list of form copies:
@@ -129,5 +139,5 @@ export function createFakeJira({ issues = {}, users = {}, transitions = {}, form
     Object.assign(copy, { submitted: true, answers });
   };
 
-  return { issues, comments, applied, calls, properties, forms, submitForm, requestJira };
+  return { issues, comments, applied, calls, properties, forms, submitForm, asUserCalls, requestJira };
 }
