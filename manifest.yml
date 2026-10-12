@@ -12,7 +12,7 @@ modules:
       resolver:
         function: resolver
       render: native
-      title: Smart Approval
+      title: Retail inMotion Smart Approval
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
 
   jira:adminPage:
@@ -20,7 +20,7 @@ modules:
       resource: backup-ui
       resolver:
         function: backup-resolver
-      title: Smart Approval Manager backup & restore
+      title: Retail inMotion Smart Approval backup & restore
 
   jira:projectSettingsPage:
     - key: smart-approval-project-settings
@@ -28,7 +28,7 @@ modules:
       resolver:
         function: config-resolver
       render: native
-      title: Smart Approval Manager
+      title: Retail inMotion Smart Approval Manager
 
   jiraServiceManagement:portalSubheader:
     - key: smart-approval-portal-summary
