@@ -95,8 +95,20 @@ jobs:
           forge settings set usage-analytics false
           forge settings set default-environment "$DEPLOY_ENVIRONMENT"
           forge deploy --environment "$DEPLOY_ENVIRONMENT" --non-interactive
-      - name: Upgrade installation
-        run: forge install --upgrade --site "$DEPLOY_SITE" --product "$DEPLOY_PRODUCT" --environment "$DEPLOY_ENVIRONMENT" --confirm-scopes --non-interactive
+      - name: Install or upgrade installation
+        shell: bash
+        run: |
+          set +e
+          forge install --upgrade --site "$DEPLOY_SITE" --product "$DEPLOY_PRODUCT" --environment "$DEPLOY_ENVIRONMENT" --confirm-scopes --non-interactive 2>&1 | tee forge-install.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then exit 0; fi
+          if grep -q "Could not find an installation" forge-install.log; then
+            echo "No installation yet on $DEPLOY_SITE; installing for the first time."
+            forge install --site "$DEPLOY_SITE" --product "$DEPLOY_PRODUCT" --environment "$DEPLOY_ENVIRONMENT" --confirm-scopes --non-interactive
+            exit 0
+          fi
+          exit "$status"
       - name: Verify TEST project
         env:
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
