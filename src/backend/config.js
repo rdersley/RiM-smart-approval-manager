@@ -214,6 +214,9 @@ resolver.define('saveSettings', async ({ payload }) => {
     approveTransitionId: clean(incoming.approveTransitionId, 100),
     declineTransitionId: clean(incoming.declineTransitionId, 100),
     autoRules: cleanRules(incoming.autoRules),
+    // Suggestions prepared before this time are re-evaluated when the agent
+    // panel loads, so rule edits reach tickets that already had a suggestion.
+    savedAt: new Date().toISOString(),
   };
   await kvs.set(configKey(projectId), settings);
   return enrichSettings(settings);

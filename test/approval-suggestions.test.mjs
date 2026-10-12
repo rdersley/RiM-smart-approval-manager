@@ -18,6 +18,7 @@ mock.module('@forge/kvs', { namedExports: { kvs: store.kvs, WhereConditions: sto
 const { handler: agent } = await import('../src/backend/index.js');
 const { handler: portal } = await import('../src/backend/portal.js');
 const { run: runAutomation } = await import('../src/backend/automation.js');
+const { handler: config } = await import('../src/backend/config.js');
 
 const call = (handler, functionKey, accountId, payload = {}) =>
   handler({ call: { functionKey, payload }, context: {} }, { principal: { accountId } });
@@ -86,4 +87,37 @@ test('after a decline or cancellation the rule can suggest the approver again', 
   await issueUpdated();
   assert.deepEqual(await suggested(), ['mgr-a', 'mgr-b'], 'declined, and the other approver closed with the group');
   assert.equal(store.data.get(`approval#${b.id}`).status, 'cancelled');
+});
+
+const ruleWith = (approvers) => ({ id: 'r1', name: 'Manager approval', conditions: [{ fieldId: 'summary', operator: 'notEmpty' }], approvers: approvers.map((accountId) => ({ accountId })) });
+const saveRules = (rules) => call(config, 'saveSettings', 'admin-1', { projectId: PROJECT, settings: { requireDeclineReason: false, autoRules: rules } });
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+test('editing a rule replaces a suggestion the ticket already had', async () => {
+  await saveRules([ruleWith(['mgr-a'])]);
+  await tick();
+  assert.deepEqual(await suggested(), ['mgr-a']);
+  await tick();
+  await saveRules([ruleWith(['mgr-b'])]);
+  assert.deepEqual(await suggested(), ['mgr-b'], 'the panel shows the edited rule without a ticket update');
+});
+
+test('a rule that no longer matches after an edit stops suggesting', async () => {
+  await saveRules([ruleWith(['mgr-a'])]);
+  await tick();
+  assert.deepEqual(await suggested(), ['mgr-a']);
+  await tick();
+  await saveRules([{ ...ruleWith(['mgr-a']), conditions: [{ fieldId: 'summary', operator: 'isEmpty' }] }]);
+  assert.equal(await suggested(), null);
+  assert.equal(store.data.get('suggestion#SD-1'), undefined);
+});
+
+test('an up-to-date suggestion is not re-evaluated on every panel load', async () => {
+  await saveRules([ruleWith(['mgr-a'])]);
+  await tick();
+  await suggested();
+  const preparedAt = store.data.get('suggestion#SD-1').preparedAt;
+  await tick();
+  await suggested();
+  assert.equal(store.data.get('suggestion#SD-1').preparedAt, preparedAt);
 });

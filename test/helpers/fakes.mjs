@@ -80,6 +80,9 @@ export function createFakeJira({ issues = {}, users = {}, transitions = {}, form
       Object.assign(issues[key], { status: chosen.to, category: chosen.category || 'indeterminate' });
       return response(204);
     }
+    if (url.pathname === '/rest/api/3/mypermissions' && method === 'GET') {
+      return response(200, { permissions: { ADMINISTER_PROJECTS: { havePermission: true } } });
+    }
     if (url.pathname === '/rest/api/3/user' && method === 'GET') {
       const accountId = url.searchParams.get('accountId');
       return response(200, { accountId, displayName: users[accountId] || `${accountId} name`, active: true });

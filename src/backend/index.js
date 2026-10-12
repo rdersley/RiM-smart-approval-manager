@@ -66,7 +66,11 @@ resolver.define('getApprovalDefaults', async ({ payload }) => {
   // its configured trigger status. Re-evaluate the current ticket when the agent
   // opens the panel so matching approvers are prepared without requiring another
   // Jira field/status change. The automation worker still only prepares; it never sends.
-  if (!suggestion && Array.isArray(settings.autoRules) && settings.autoRules.length > 0) {
+  // A suggestion prepared before the settings were last saved is re-evaluated too,
+  // so an edited rule (new form, approvers or conditions) replaces the old one.
+  const hasRules = Array.isArray(settings.autoRules) && settings.autoRules.length > 0;
+  const stale = Boolean(suggestion && settings.savedAt && !(clean(suggestion.preparedAt, 100) >= clean(settings.savedAt, 100)));
+  if ((!suggestion && hasRules) || stale) {
     try {
       await prepareRuleSuggestion({ issue: { key: issueKey, fields: { project: { id: projectId } } } });
       suggestion = await kvs.get(suggestionKey(issueKey));
