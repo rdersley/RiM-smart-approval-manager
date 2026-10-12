@@ -46,14 +46,16 @@ const AgentPanel = () => {
         invoke('getIssueApprovals', { issueKey }),
         invoke('getApprovalDefaults', { issueKey }),
       ]);
-      setApprovals(items || []);
       const suggestion = defaults?.suggestion || null;
+      // Load the form status before showing the rule, so the panel never shows
+      // the single-form view while the account forms are still loading.
+      const status = suggestion?.formEnabled ? await invoke('getApprovalFormStatus', { issueKey }) : null;
+      setApprovals(items || []);
       const fallbackMode = defaults?.defaultApprovalMode === 'any' ? 'any' : 'all';
       setDefaultMode(fallbackMode);
       setPreparedRule(suggestion);
+      setFormStatus(status);
       if (!agentEdited.current) applySuggestion(suggestion, fallbackMode);
-      if (suggestion?.formEnabled) setFormStatus(await invoke('getApprovalFormStatus', { issueKey }));
-      else setFormStatus(null);
       setDefaultsLoaded(true);
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
@@ -128,7 +130,7 @@ const AgentPanel = () => {
   };
 
   const pendingCount = approvals.filter((a) => a.status === 'pending').length;
-  const perAccount = Boolean(preparedRule?.formEnabled && formStatus?.perAccount);
+  const perAccount = Boolean(preparedRule?.formEnabled && (preparedRule?.formPerAccount || formStatus?.perAccount));
   const accountForms = formStatus?.forms || [];
   const accountStates = {
     'waiting-for-customer': ['Waiting for customer', 'inprogress'],

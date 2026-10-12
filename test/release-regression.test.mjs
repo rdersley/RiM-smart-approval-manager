@@ -42,7 +42,8 @@ test('rule automation prepares approvals but does not send them automatically', 
 test('agent panel re-evaluates rules for tickets already in the configured trigger status', () => {
   includesAll(agent, [
     "import { run as prepareRuleSuggestion } from './automation.js';",
-    "if (!suggestion && Array.isArray(settings.autoRules) && settings.autoRules.length > 0)",
+    "const hasRules = Array.isArray(settings.autoRules) && settings.autoRules.length > 0;",
+    "if ((!suggestion && hasRules) || stale)",
     "await prepareRuleSuggestion({ issue: { key: issueKey, fields: { project: { id: projectId } } } });",
     "suggestion = await kvs.get(suggestionKey(issueKey));",
   ]);
