@@ -222,7 +222,7 @@ export async function createApprovalHandler({ payload, context = {} }) {
         // selection existed), show the submitted answers rather than presenting
         // an approver with an empty decision screen.
         const answers = preview.answers
-          .filter((row) => !allowedKeys || allowedKeys.size === 0 || allowedKeys.has(clean(row.fieldKey, 300)))
+          .filter((row) => !allowedKeys || allowedKeys.size === 0 || allowedKeys.has(clean(row.fieldKey, 300)) || allowedKeys.has(clean(row.questionKey, 300)))
           .slice(0, 50)
           .map((row) => ({ fieldKey: clean(row.fieldKey, 300), label: clean(row.label, 500), answer: clean(row.answer, 4000) }));
         formSnapshot = { formId: clean(preview.formId, 300), instanceId: clean(preview.instanceId, 300), name: clean(preview.name, 500), capturedAt: nowIso(), answers, auditFieldMap: { approvedByFieldKey: clean(prepared.approvedByFieldKey, 300), approvedAtFieldKey: clean(prepared.approvedAtFieldKey, 300), decisionFieldKey: clean(prepared.decisionFieldKey, 300), decisionCommentFieldKey: clean(prepared.decisionCommentFieldKey, 300) } };

@@ -56,6 +56,38 @@ export async function getSimplifiedFormAnswers(issueKey, formId) {
   })).filter((row) => row.label || row.fieldKey);
 }
 
+// Answers read from the full form, keyed by question number ("3") with the
+// question's questionKey ("username") alongside. The settings page lists
+// questions by number, so rule field selections, the account question and
+// write-back mappings all match on fieldKey. (The simplified-answers endpoint
+// is not keyed by question number, so nothing matched on real Jira.)
+// Choices are shown by label; dates, numbers and text as written.
+export function formAnswerRows(form) {
+  const questions = form?.design?.questions || {};
+  const answers = form?.state?.answers || {};
+  return Object.entries(questions).map(([id, question]) => {
+    const raw = answers[id] || {};
+    const labels = new Map((question?.choices || []).map((c) => [String(c.id), c.label]));
+    let answer = '';
+    if (Array.isArray(raw.choices)) answer = raw.choices.map((c) => labels.get(String(c)) || String(c)).join(', ');
+    else if (raw.date) answer = raw.time ? `${raw.date} ${raw.time}` : raw.date;
+    else if (raw.text != null) answer = raw.text;
+    else if (raw.number != null) answer = String(raw.number);
+    else answer = normalizeAnswer(raw.users || raw.value || '');
+    return {
+      fieldKey: clean(id, 300),
+      questionKey: clean(question?.questionKey, 300),
+      label: clean(question?.label || question?.question || id, 500),
+      answer: clean(answer, 4000),
+    };
+  });
+}
+
+export async function getFormAnswers(issueKey, formInstanceId) {
+  if (!issueKey || !formInstanceId) return [];
+  return formAnswerRows(await getIssueForm(issueKey, formInstanceId));
+}
+
 // With wantedInstanceId, reads exactly that copy of a form (a ticket can carry
 // several copies of one template, e.g. one per account); otherwise the first
 // copy of the preferred template.
@@ -70,7 +102,7 @@ export async function getFormPreview(issueKey, preferredFormId = '', wantedInsta
   if (!selected) return null;
   const instanceId = clean(selected?.id, 300);
   if (!instanceId) return null;
-  const answers = await getSimplifiedFormAnswers(issueKey, instanceId);
+  const answers = await getFormAnswers(issueKey, instanceId);
   return {
     formId: clean(selected?.formTemplate?.id || selected?.id, 300),
     instanceId,
@@ -147,11 +179,22 @@ export async function writeApprovalAuditToForm(issueKey, formInstanceId, fieldMa
 
   const form = await getIssueForm(issueKey, formInstanceId);
   const current = form?.state?.answers && typeof form.state.answers === 'object' ? form.state.answers : {};
+  const questions = form?.design?.questions || {};
   const answers = { ...current };
-  if (approvedByKey) answers[approvedByKey] = { text: clean(audit?.approverName, 500) };
-  if (approvedAtKey) answers[approvedAtKey] = { text: clean(audit?.decidedAt, 100) };
-  if (decisionKey) answers[decisionKey] = { text: clean(audit?.decision, 100) };
-  if (commentKey) answers[commentKey] = { text: clean(audit?.comment, 2000) };
+  // Write each value in the shape its question expects: date questions take a
+  // date (Forms ignores text there), everything else text.
+  const valueFor = (key, text) => {
+    const type = String(questions[key]?.type || '');
+    if (type === 'da' || type === 'dt') {
+      const at = clean(audit?.decidedAt, 100);
+      return type === 'dt' ? { date: at.slice(0, 10), time: at.slice(11, 16) } : { date: at.slice(0, 10) };
+    }
+    return { text };
+  };
+  if (approvedByKey) answers[approvedByKey] = valueFor(approvedByKey, clean(audit?.approverName, 500));
+  if (approvedAtKey) answers[approvedAtKey] = valueFor(approvedAtKey, clean(audit?.decidedAt, 100));
+  if (decisionKey) answers[decisionKey] = valueFor(decisionKey, clean(audit?.decision, 100));
+  if (commentKey) answers[commentKey] = valueFor(commentKey, clean(audit?.comment, 2000));
   await saveIssueFormAnswers(issueKey, formInstanceId, answers);
   return { written: true };
 }

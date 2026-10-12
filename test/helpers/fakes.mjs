@@ -42,7 +42,7 @@ const response = (status, body) => ({
 
 // issues: { [key]: { projectId, status, category ('new'|'indeterminate'|'done'), summary } }
 // transitions: { [key]: [{ id, to: statusName, category }] } available from any status
-export function createFakeJira({ issues = {}, users = {}, transitions = {}, forms = {} } = {}) {
+export function createFakeJira({ issues = {}, users = {}, transitions = {}, forms = {}, questionTypes = {} } = {}) {
   const comments = [];
   const applied = [];
   const calls = [];
@@ -124,10 +124,19 @@ export function createFakeJira({ issues = {}, users = {}, transitions = {}, form
       const copy = (forms[decodeURIComponent(m[1])] || []).find((f) => f.id === decodeURIComponent(m[2]));
       if (!copy) return response(404, {});
       if (m[3] === '/action/external' && method === 'PUT') { copy.external = true; return response(200, {}); }
+      // The simplified-answers endpoint is NOT keyed by question number on real
+      // Jira, so the fake returns labels only: code must not rely on it.
       if (m[3] === '/format/answers' && method === 'GET') {
-        return response(200, Object.entries(copy.answers).map(([fieldKey, answer]) => ({ fieldKey, label: fieldKey, answer })));
+        return response(200, Object.entries(copy.answers).map(([, answer]) => ({ label: 'Question', answer })));
       }
-      if (!m[3] && method === 'GET') return response(200, { id: copy.id, state: { answers: { ...copy.writtenBack } } });
+      // The full form, shaped like real Jira Forms: design.questions keyed by
+      // question number, state.answers keyed the same way ({ text } / { date }).
+      if (!m[3] && method === 'GET') {
+        const keys = [...new Set([...Object.keys(copy.answers), ...Object.keys(questionTypes)])];
+        const questions = Object.fromEntries(keys.map((k) => [k, { label: `Label ${k}`, questionKey: `qk-${k}`, type: questionTypes[k] || 'ts' }]));
+        const answers = Object.fromEntries(Object.entries(copy.answers).map(([k, v]) => [k, { text: v }]));
+        return response(200, { id: copy.id, design: { questions }, state: { answers: { ...answers, ...copy.writtenBack } } });
+      }
       if (!m[3] && method === 'PUT') { copy.writtenBack = body.answers; return response(200, {}); }
     }
     throw new Error(`Unexpected Jira call: ${method} ${url.pathname}`);
